@@ -127,8 +127,8 @@ old→new mapping for migrating an existing gamemode is in the
    - **Linux:** `omp-mysql.so` → `components/`
 2. `omp-mysql.inc` → `qawno/include/`, then `#include <omp-mysql>`.
 3. Connect (see [TL;DR](#tldr)). A complete **login/register admin demo** that exercises
-   every native ships as `filterscripts/omp-admin.pwn` — see the
-   [omp-admin walkthrough](https://github.com/Mac-Andreas/omp-MySQL/wiki/omp-admin-demo).
+   every native ships as `filterscripts/mysql-admin.pwn` — see the
+   [mysql-admin walkthrough](https://github.com/Mac-Andreas/omp-MySQL/wiki/mysql-admin-demo).
 
 ---
 
@@ -200,7 +200,7 @@ The **[Wiki](https://github.com/Mac-Andreas/omp-MySQL/wiki)** is the book:
 - **Getting started** · **Building** (Windows / Linux / macOS) · **Configuration**
 - **Native reference** (every `mysql_*` function) · **Prepared statements** · **Models**
 - **Migrating from SA-MP-MySQL** · **MySQL version history & support**
-- **The omp-admin demo** · **Security**
+- **The mysql-admin demo** · **Security**
 
 ---
 

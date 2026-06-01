@@ -807,7 +807,7 @@ void MySQLComponent::dispatchHash(const HashJob& job)
 	{
 		return;
 	}
-	// The hash/verify callback may live in a filterscript (e.g. omp-admin's
+	// The hash/verify callback may live in a filterscript (e.g. mysql-admin's
 	// OnRegisterHashed / OnLoginVerified), so search all scripts, not just main.
 	AMX* amx = findScriptWithPublic(job.callback.c_str());
 	if (amx == nullptr)

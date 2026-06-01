@@ -1,5 +1,5 @@
 /* =============================================================================
- *  omp-admin  -  the ULTIMATE save-everything admin/VIP demo for omp-mySQL.
+ *  mysql-admin  -  the ULTIMATE save-everything admin/VIP demo for omp-mySQL.
  *
  *  Self-contained: needs only <open.mp> and <omp-mysql>. No zcmd / extra incs.
  *
@@ -84,7 +84,6 @@ enum E_ACC {
 new g_acc[MAX_PLAYERS][E_ACC];
 
 new MySQL:g_db = MYSQL_INVALID_HANDLE;
-new bool:g_haveAccounts = false; // any account yet? (OWNER bootstrap)
 
 // ===========================================================================
 //  Small helpers (no `sizeof`-default params - that crashes pawncc 3.10)
@@ -251,7 +250,7 @@ health=?, armour=?, ip=?, logins=?, playtime=? WHERE id=?");
 
 public OnFilterScriptInit()
 {
-    print("[omp-admin] starting...");
+    print("[mysql-admin] starting...");
 
     new MySQLConfig:cfg = mysql_config_create();
     mysql_config_set(cfg, SSL_MODE, SSL_MODE_REQUIRED);
@@ -259,12 +258,12 @@ public OnFilterScriptInit()
     g_db = mysql_connect(DB_HOST, DB_USER, DB_PASS, DB_NAME, cfg);
     if (g_db == MYSQL_INVALID_HANDLE)
     {
-        printf("[omp-admin] DB connect FAILED (errno %d).", mysql_errno(g_db));
+        printf("[mysql-admin] DB connect FAILED (errno %d).", mysql_errno(g_db));
         return 1;
     }
     new cipher[64];
     mysql_get_tls_cipher(cipher, sizeof cipher, g_db);
-    printf("[omp-admin] connected over TLS (%s).", cipher);
+    printf("[mysql-admin] connected over TLS (%s).", cipher);
 
     mysql_execute_sync(g_db,
         "CREATE TABLE IF NOT EXISTS accounts (\
@@ -284,9 +283,6 @@ last_login DATETIME NULL, created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\
 account_id INT NOT NULL, slot INT NOT NULL, weapon INT NOT NULL, ammo INT NOT NULL,\
 PRIMARY KEY (account_id, slot)) CHARACTER SET utf8mb4");
 
-    // Any accounts yet? (first registration becomes OWNER).
-    mysql_execute(g_db, "SELECT COUNT(*) AS c FROM accounts", "OnCountAccounts");
-
     // If the filterscript was RELOADED with players already online, their session
     // memory is gone (everyone is logged out) -> re-run auth so they're prompted
     // again. Without this they'd be stuck on "Log in first" with no dialog.
@@ -294,16 +290,7 @@ PRIMARY KEY (account_id, slot)) CHARACTER SET utf8mb4");
         if (IsPlayerConnected(i)) BeginAuth(i);
 
     SetTimer("AutoSaveAll", AUTOSAVE_MS, true);
-    print("[omp-admin] loaded.");
-    return 1;
-}
-
-forward OnCountAccounts();
-public OnCountAccounts()
-{
-    new c;
-    mysql_rs_get_int_by(0, "c", c);
-    g_haveAccounts = (c > 0);
+    print("[mysql-admin] loaded.");
     return 1;
 }
 
@@ -321,7 +308,7 @@ public AutoSaveAll()
     new saved = 0;
     for (new i = 0; i < MAX_PLAYERS; i++)
         if (IsPlayerConnected(i) && g_acc[i][Acc_Logged]) { SavePlayer(i); saved++; }
-    if (saved) printf("[omp-admin] autosaved %d player(s).", saved);
+    if (saved) printf("[mysql-admin] autosaved %d player(s).", saved);
     return 1;
 }
 
@@ -386,12 +373,12 @@ public OnAccountLookup(playerid)
         mysql_rs_get_int_by(0, "id", id);
         g_acc[playerid][Acc_Id] = id;
         ShowPlayerDialog(playerid, DLG_LOGIN, DIALOG_STYLE_PASSWORD,
-            "omp-admin - Login", "Welcome back.\nEnter your password:", "Login", "Quit");
+            "mysql-admin - Login", "Welcome back.\nEnter your password:", "Login", "Quit");
     }
     else
     {
         ShowPlayerDialog(playerid, DLG_REGISTER, DIALOG_STYLE_PASSWORD,
-            "omp-admin - Register", "New here.\nChoose a password (4+ chars):", "Register", "Quit");
+            "mysql-admin - Register", "New here.\nChoose a password (4+ chars):", "Register", "Quit");
     }
     return 1;
 }
@@ -478,7 +465,7 @@ public OnDialogResponse(playerid, dialogid, response, listitem, inputtext[])
         if (strlen(inputtext) < 4)
         {
             ShowPlayerDialog(playerid, DLG_REGISTER, DIALOG_STYLE_PASSWORD,
-                "omp-admin - Register", "Too short - choose a password (4+ chars):", "Register", "Quit");
+                "mysql-admin - Register", "Too short - choose a password (4+ chars):", "Register", "Quit");
             return 1;
         }
         mysql_hash(inputtext, "OnPasswordHashed", "d", HASH_ARGON2ID, playerid);
@@ -507,8 +494,12 @@ public DelayedKick(playerid)
 forward OnPasswordHashed(playerid, const hash[]);
 public OnPasswordHashed(playerid, const hash[])
 {
+    // SECURITY: every new account registers as a normal PLAYER (level 0). There is
+    // deliberately NO "first account becomes owner" auto-promotion — on a public
+    // server that would hand admin to whoever joins first. Promote your first admin
+    // via RCON: log into RCON (/rcon login <pass>), then /setlevel <id> 4. No player
+    // name is ever special.
     new level = LEVEL_PLAYER;
-    if (!g_haveAccounts) { level = LEVEL_OWNER; g_haveAccounts = true; }
 
     new name[MAX_PLAYER_NAME];
     GetPlayerName(playerid, name, sizeof name);
@@ -541,8 +532,7 @@ public OnAccountInserted(playerid)
 
     TogglePlayerControllable(playerid, true); // authenticated -> unfreeze
     SendClientMessage(playerid, COL_OK, "Account registered - you are logged in.");
-    if (g_acc[playerid][Acc_Level] == LEVEL_OWNER)
-        SendClientMessage(playerid, COL_ADMIN, "You are the server OWNER (first account).");
+    SendClientMessage(playerid, COL_GREY, "You are a Player. An admin can promote you via RCON (/setlevel).");
     return 1;
 }
 
@@ -562,7 +552,7 @@ public OnAccountLoaded(playerid)
     if (!mysql_verify_sync(pw, hash))
     {
         if (++g_acc[playerid][Acc_LoginTries] >= 3) { SendClientMessage(playerid, COL_ERR, "Too many wrong passwords."); Kick(playerid); }
-        else ShowPlayerDialog(playerid, DLG_LOGIN, DIALOG_STYLE_PASSWORD, "omp-admin - Login", "Wrong password. Try again:", "Login", "Quit");
+        else ShowPlayerDialog(playerid, DLG_LOGIN, DIALOG_STYLE_PASSWORD, "mysql-admin - Login", "Wrong password. Try again:", "Login", "Quit");
         return 1;
     }
 
@@ -812,13 +802,13 @@ Cmd_Cmds(playerid)
     strcat(list, "Help\nAdmins online\nSave now\n");
     if (g_acc[playerid][Acc_Vip]) strcat(list, "VIP commands\n");
     if (g_acc[playerid][Acc_Level] >= LEVEL_MOD) strcat(list, "Admin commands\n");
-    ShowPlayerDialog(playerid, DLG_CMDS, DIALOG_STYLE_LIST, "omp-admin - Commands", list, "Select", "Close");
+    ShowPlayerDialog(playerid, DLG_CMDS, DIALOG_STYLE_LIST, "mysql-admin - Commands", list, "Select", "Close");
     return 1;
 }
 
 Cmd_Help(playerid)
 {
-    SendClientMessage(playerid, COL_INFO, "omp-admin: full save-everything demo on omp-mySQL.");
+    SendClientMessage(playerid, COL_INFO, "mysql-admin: full save-everything demo on omp-mySQL.");
     SendClientMessage(playerid, COL_GREY, "Your position, money, score, skin, weapons, playtime & more persist to MySQL.");
     SendClientMessage(playerid, COL_GREY, "Argon2id passwords over a TLS link. Type /cmds.");
     return 1;
@@ -866,7 +856,7 @@ Cmd_Admins(playerid)
 Cmd_VipCmds(playerid)
 {
     if (!g_acc[playerid][Acc_Vip] && g_acc[playerid][Acc_Level] < LEVEL_ADMIN) { SendClientMessage(playerid, COL_ERR, "VIP only."); return 1; }
-    ShowPlayerDialog(playerid, DLG_VIPCMDS, DIALOG_STYLE_LIST, "omp-admin - VIP", "/heal - full health & armour\n", "Close", "");
+    ShowPlayerDialog(playerid, DLG_VIPCMDS, DIALOG_STYLE_LIST, "mysql-admin - VIP", "/heal - full health & armour\n", "Close", "");
     return 1;
 }
 
