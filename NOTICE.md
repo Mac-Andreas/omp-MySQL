@@ -41,4 +41,13 @@ request to enable relinking.
   linked; modern TLS — OpenSSL on every platform).
 - **Argon2** (phc-winner-argon2) — CC0/Apache-2.0 — vendored under `libs/argon2/`.
 
+## Trademarks & affiliation
+
+omp-MySQL is an independent, community-made project. It is **not affiliated with,
+sponsored by, or endorsed by** the open.mp project or Oracle Corporation. **"MySQL"**
+is a trademark of Oracle Corporation; **"open.mp"** / "open multiplayer" of its
+respective authors; **"SA-MP"** of the SA-MP team. These names are used here only
+descriptively (nominative use), to indicate compatibility and lineage — not to claim
+any endorsement or ownership. "omp-MySQL" is this project's own name.
+
 Author: **Xyranaut** · Organisation: **Mac Andreas**

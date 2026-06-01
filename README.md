@@ -210,3 +210,13 @@ The **[Wiki](https://github.com/Mac-Andreas/omp-MySQL/wiki)** is the book:
 - **API inspiration:** SA-MP-MySQL by BlueG / maddinat0r — *no code reused*.
 - **Dependencies:** MariaDB Connector/C (LGPL-2.1), OpenSSL, phc-winner-argon2,
   the open.mp SDK & Pawn toolchain. See [NOTICE.md](NOTICE.md).
+
+---
+
+## Trademarks & affiliation
+
+omp-MySQL is an independent, community-made project. It is **not affiliated with,
+sponsored by, or endorsed by** the open.mp project or Oracle. **"MySQL"** is a
+trademark of Oracle Corporation and **"open.mp"** of its respective authors; both are
+used here only descriptively, to indicate compatibility. "omp-MySQL" is this project's
+own name.
