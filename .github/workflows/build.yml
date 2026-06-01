@@ -1,0 +1,193 @@
+name: build
+
+# Build the component across an arch matrix and attach the shipping artifacts
+# (plus the Pawn include) to GitHub releases.
+#
+# open.mp servers + components are currently 32-bit (i386), so the 32-bit
+# Windows/Linux artifacts are what ship today. The 64-bit jobs are
+# FUTURE-PROOFING for a 64-bit open.mp server — they build and upload artifacts
+# but are not the canonical release targets yet.
+#
+# Naming: <os>-<bits> e.g. windows-32, linux-64. macOS has no 32-bit support at
+# all (Apple removed it in Catalina), and there is no macOS open.mp server, so
+# macOS is a single 64-bit dev build-gate only (never shipped).
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # =========================================================================
+  #  32-bit — the current shipping targets
+  # =========================================================================
+
+  # --- Windows 32-bit .dll (MSVC) ------------------------------------------
+  # Native MSVC (the canonical open.mp component ABI). MariaDB Connector/C
+  # submodule built from source (OpenSSL TLS, via vcpkg), statically linked ->
+  # the .dll ships beside the bundled libssl/libcrypto OpenSSL runtime DLLs.
+  windows-32:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+      - name: Install OpenSSL (x86) via vcpkg
+        shell: bash
+        run: vcpkg install openssl:x86-windows
+      - name: Configure (Win32 / MSVC, OpenSSL)
+        shell: bash
+        run: >
+          cmake -B build-win32 -A Win32 -DCMAKE_BUILD_TYPE=Release
+          "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x86-windows
+      - name: Build
+        run: cmake --build build-win32 --config Release
+      - name: Locate artifacts (.dll + bundled OpenSSL runtime DLLs)
+        shell: bash
+        run: |
+          dll=$(find build-win32 -name omp-mysql.dll | head -1)
+          test -n "$dll"; cp "$dll" omp-mysql.dll
+          cp "$VCPKG_INSTALLATION_ROOT"/installed/x86-windows/bin/libssl-3*.dll . 2>/dev/null || true
+          cp "$VCPKG_INSTALLATION_ROOT"/installed/x86-windows/bin/libcrypto-3*.dll . 2>/dev/null || true
+          ls -la *.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mysql-windows-x86
+          path: |
+            omp-mysql.dll
+            libssl-3*.dll
+            libcrypto-3*.dll
+            include/omp-mysql.inc
+
+  # --- Linux 32-bit .so -----------------------------------------------------
+  # i386 Debian bullseye container (glibc 2.31, matching the server); MariaDB
+  # Connector/C built from source (OpenSSL TLS), statically linked.
+  linux-32:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build 32-bit omp-mysql.so
+        run: ARCH=32 ./scripts/build-linux.sh
+      - name: Sanity-check artifact
+        run: |
+          test -f build-linux/omp-mysql.so
+          file build-linux/omp-mysql.so | grep -q "ELF 32-bit"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mysql-linux-x86
+          path: |
+            build-linux/omp-mysql.so
+            include/omp-mysql.inc
+
+  # =========================================================================
+  #  64-bit — future-proofing (a 64-bit open.mp server is not shipping yet)
+  # =========================================================================
+
+  # --- Windows 64-bit .dll (MSVC) ------------------------------------------
+  windows-64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install OpenSSL (x64) via vcpkg
+        shell: bash
+        run: vcpkg install openssl:x64-windows
+      - name: Configure (x64 / MSVC, OpenSSL)
+        shell: bash
+        run: >
+          cmake -B build-win64 -A x64 -DCMAKE_BUILD_TYPE=Release
+          "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+      - name: Build
+        run: cmake --build build-win64 --config Release
+      - name: Locate artifacts (.dll + bundled OpenSSL runtime DLLs)
+        shell: bash
+        run: |
+          dll=$(find build-win64 -name omp-mysql.dll | head -1)
+          test -n "$dll"; cp "$dll" omp-mysql.dll
+          cp "$VCPKG_INSTALLATION_ROOT"/installed/x64-windows/bin/libssl-3*.dll . 2>/dev/null || true
+          cp "$VCPKG_INSTALLATION_ROOT"/installed/x64-windows/bin/libcrypto-3*.dll . 2>/dev/null || true
+          ls -la *.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mysql-windows-x64
+          path: |
+            omp-mysql.dll
+            libssl-3*.dll
+            libcrypto-3*.dll
+            include/omp-mysql.inc
+
+  # --- Linux 64-bit .so -----------------------------------------------------
+  linux-64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build 64-bit omp-mysql.so
+        run: ARCH=64 ./scripts/build-linux.sh
+      - name: Sanity-check artifact
+        run: |
+          test -f build-linux64/omp-mysql.so
+          file build-linux64/omp-mysql.so | grep -q "ELF 64-bit"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mysql-linux-x64
+          path: |
+            build-linux64/omp-mysql.so
+            include/omp-mysql.inc
+
+  # --- macOS .dylib (64-bit, dev build-gate only — NOT a shipping target) --
+  # There is NO macOS open.mp server, so the .dylib is never released, and macOS
+  # has no 32-bit support at all. This single 64-bit job keeps the macOS dev
+  # build path from rotting. Uploads no artifact; not a release dependency.
+  macos-64:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install connector build deps (OpenSSL/zstd for MariaDB Connector/C)
+        run: brew install openssl@3 zstd
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build (sanity only — artifact intentionally not uploaded)
+        run: cmake --build build --config Release
+
+  # =========================================================================
+  #  Release: attach all built artifacts on a tag
+  # =========================================================================
+  # Depends only on the 32-bit shipping jobs (today's real targets); the 64-bit
+  # artifacts are included if their jobs succeeded.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows-32, linux-32]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Package per-target archives
+        run: |
+          cd dist
+          for d in */; do
+            name="${d%/}"
+            (cd "$d" && zip -r "../${name}.zip" .)
+          done
+          ls -la
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true

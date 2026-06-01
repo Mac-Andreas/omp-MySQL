@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Pre-commit guard: block a commit if the project does not build.
+#
+# Why: Phase 5c-i was committed twice against a stale dylib with a red build,
+# while the message claimed "cmake --build RC=0 / RUNTIME-tested". This hook
+# makes that mistake impossible to commit — the build must be green first.
+#
+# Install:  ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+# Bypass (use sparingly, e.g. committing a known-broken WIP):
+#           git commit --no-verify
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+# Only meaningful once the build tree is configured. If it isn't, don't block
+# (a fresh clone shouldn't be unable to commit) — just note it and pass.
+if [[ ! -f build/CMakeCache.txt ]]; then
+	echo "pre-commit: build/ not configured; skipping build gate." >&2
+	exit 0
+fi
+
+echo "pre-commit: building (cmake --build build --config Release)…" >&2
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
+
+if cmake --build build --config Release >"$log" 2>&1; then
+	echo "pre-commit: build OK." >&2
+	exit 0
+fi
+
+echo "pre-commit: BUILD FAILED — commit blocked." >&2
+echo "----- last build errors -----" >&2
+grep -iE 'error:|undefined|fatal|Error [0-9]' "$log" | head -20 >&2 || true
+echo "-----------------------------" >&2
+echo "Fix the build, or bypass intentionally with: git commit --no-verify" >&2
+exit 1

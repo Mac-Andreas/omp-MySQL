@@ -1,0 +1,38 @@
+# Build output
+/build/
+/build-win32/
+/build-*/
+/out/
+*.dll
+*.so
+*.dylib
+*.lib
+*.exp
+
+# (The MySQL client is now the MariaDB Connector/C submodule, built from source —
+# no vendored connector binaries to track.)
+*.pdb
+*.obj
+*.o
+
+# Pawn compiler output
+*.amx
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Claude harness scratch
+.claude/scheduled_tasks.lock
+
+# test probe binary
+testscripts/connection_probe
+testscripts/feature_probe

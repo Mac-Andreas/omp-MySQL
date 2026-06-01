@@ -1,0 +1,15 @@
+[submodule "sdk"]
+	path = sdk
+	url = https://github.com/openmultiplayer/open.mp-sdk
+[submodule "pawn-natives"]
+	path = pawn-natives
+	url = https://github.com/openmultiplayer/pawn-natives
+[submodule "pawn"]
+	path = pawn
+	url = https://github.com/openmultiplayer/compiler
+[submodule "libs/argon2"]
+	path = libs/argon2
+	url = https://github.com/P-H-C/phc-winner-argon2
+[submodule "libs/mariadb-connector-c"]
+	path = libs/mariadb-connector-c
+	url = https://github.com/mariadb-corporation/mariadb-connector-c.git
