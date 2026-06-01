@@ -7,7 +7,7 @@
 Clean-room. Mandatory TLS. Prepared statements. Argon2id password hashing.
 Tested live on MySQL 5.7 → 9.2.
 
-[![build](https://github.com/Mac-Andreas/omp-MySQL/actions/workflows/build.yml/badge.svg)](https://github.com/Mac-Andreas/omp-MySQL/actions/workflows/build.yml)
+[![build](https://github.com/Mac-Andreas/omp-MySQL/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/Mac-Andreas/omp-MySQL/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/Mac-Andreas/omp-MySQL?label=release)](https://github.com/Mac-Andreas/omp-MySQL/releases/latest)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-informational)](#install)

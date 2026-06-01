@@ -187,7 +187,10 @@ jobs:
             (cd "$d" && zip -r "../${name}.zip" .)
           done
           ls -la
+      # Attach build artifacts to the tag's release. Won't fail the run if the
+      # release was already created manually for this tag — it just updates assets.
       - uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
           files: dist/*.zip
           generate_release_notes: true
