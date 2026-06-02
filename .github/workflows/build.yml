@@ -248,6 +248,12 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [windows-32, linux-32, macos-arm64]
     runs-on: ubuntu-latest
+    # The default GITHUB_TOKEN is read-only, so action-gh-release got a 403
+    # ("Resource not accessible by integration") when creating the release.
+    # Grant this job write access to repo contents (releases) — least-privilege,
+    # scoped to just the publishing job.
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
