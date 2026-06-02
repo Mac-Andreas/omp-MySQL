@@ -9,7 +9,7 @@ Tested live on MySQL 5.7 → 9.2.
 
 [![release](https://img.shields.io/github/v/release/Mac-Andreas/omp-MySQL?label=release)](https://github.com/Mac-Andreas/omp-MySQL/releases/latest)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-informational)](#install)
+[![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-informational)](#install)
 [![MySQL](https://img.shields.io/badge/MySQL-5.7%20%E2%86%92%209.x-orange)](#mysql-server-support)
 [![wiki](https://img.shields.io/badge/docs-wiki-success)](https://github.com/Mac-Andreas/omp-MySQL/wiki)
 
@@ -36,7 +36,7 @@ public OnGameModeInit()
 }
 ```
 
-1. Drop `omp-mysql.dll` / `omp-mysql.so` (+ the bundled `libssl`/`libcrypto`) into `components/`.
+1. Drop `omp-mysql.dll` / `omp-mysql.so` / `omp-mysql.dylib` (+ the bundled `libssl`/`libcrypto`) into `components/`.
 2. Put `omp-mysql.inc` in `qawno/include/` and `#include <omp-mysql>`.
 3. Connect. The MySQL client is statically linked — **no separate client library to install.**
 
@@ -56,7 +56,7 @@ industry-standard (JDBC / DB-API style) API.
 
 - **Author:** Xyranaut · **Org:** Mac Andreas
 - **License:** [MIT](LICENSE) — use it anywhere, including closed-source gamemodes.
-- **Ships:** Windows `.dll` + Linux `.so` (32-bit, the open.mp server arch).
+- **Ships:** Windows `.dll` + Linux `.so` (32-bit, the open.mp server arch) + macOS `.dylib` (arm64).
 
 ### Highlights
 
@@ -146,11 +146,11 @@ linked — builds need **no external MySQL client install**.
 |---|---|---|
 | **Windows `.dll`** | native MSVC: `cmake -B build -A Win32 && cmake --build build --config Release` (OpenSSL via vcpkg) | must be **MSVC ABI** — mingw loads but crashes omp-server |
 | **Linux `.so`** | `ARCH=32 ./scripts/build-linux.sh` | i386 Debian **bullseye** (glibc 2.31) container; needs Docker |
-| **macOS `.dylib`** | `cmake -B build && cmake --build build` | **dev only** — there is no macOS open.mp server, never shipped |
+| **macOS `.dylib`** | `cmake -B build -DCMAKE_OSX_ARCHITECTURES=arm64 && cmake --build build` | **Apple Silicon** — for the native macOS open.mp server ([Mac-Andreas/omp-server-macos](https://github.com/Mac-Andreas/omp-server-macos)). macOS has no 32-bit support. |
 
-CI (`.github/workflows/build.yml`) builds and attaches the Windows + Linux artifacts
-on tagged releases. Step-by-step per-OS instructions (including the Windows OpenSSL/vcpkg
-setup and the macOS dev workflow) are in the
+CI (`.github/workflows/build.yml`) builds and attaches the Windows + Linux + macOS (arm64)
+artifacts on tagged releases. Step-by-step per-OS instructions (including the Windows OpenSSL/vcpkg
+setup and the macOS build) are in the
 **[Building guide](https://github.com/Mac-Andreas/omp-MySQL/wiki/Building)**.
 
 ---

@@ -149,11 +149,13 @@ jobs:
             build-linux64/omp-mysql.so
             include/omp-mysql.inc
 
-  # --- macOS .dylib (64-bit, dev build-gate only — NOT a shipping target) --
-  # There is NO macOS open.mp server, so the .dylib is never released, and macOS
-  # has no 32-bit support at all. This single 64-bit job keeps the macOS dev
-  # build path from rotting. Uploads no artifact; not a release dependency.
-  macos-64:
+  # --- macOS .dylib (arm64) -------------------------------------------------
+  # A native macOS open.mp server now exists (Mac-Andreas/omp-server-macos), so
+  # the .dylib is a real shipping target. That server is Apple Silicon (arm64)
+  # only, and macOS has no 32-bit support at all (Apple removed it in Catalina),
+  # so this builds arm64 to match. macos-latest runners are Apple Silicon, so
+  # this builds natively (no cross-compile).
+  macos-arm64:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -162,18 +164,89 @@ jobs:
       - name: Install connector build deps (OpenSSL/zstd for MariaDB Connector/C)
         run: brew install openssl@3 zstd
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
-      - name: Build (sanity only — artifact intentionally not uploaded)
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES=arm64
+      - name: Build
         run: cmake --build build --config Release
+      - name: Bundle OpenSSL beside the .dylib (self-contained, like the Windows DLL)
+        # The connector links Homebrew's OpenSSL via an absolute /opt/homebrew
+        # path, which only exists on a Mac with Homebrew. To make a downloadable
+        # artifact, copy libssl/libcrypto next to omp-mysql.dylib and rewrite all
+        # the load paths (the component's refs, each lib's own id, and libssl's
+        # internal libcrypto ref) to @loader_path so the trio is relocatable.
+        # Editing load commands invalidates the ad-hoc code signature, so we
+        # re-sign — required for the .dylib to load on Apple Silicon.
+        run: |
+          set -euo pipefail
+          dylib=$(find build -name omp-mysql.dylib | head -1)
+          test -n "$dylib"
+          cp "$dylib" omp-mysql.dylib
+          file omp-mysql.dylib | grep -q "arm64"
+
+          ssl=$(otool -L omp-mysql.dylib | awk '/libssl/{print $1}')
+          crypto=$(otool -L omp-mysql.dylib | awk '/libcrypto/{print $1}')
+          cp -L "$ssl"    libssl.3.dylib
+          cp -L "$crypto" libcrypto.3.dylib
+          chmod u+w omp-mysql.dylib libssl.3.dylib libcrypto.3.dylib
+
+          # 1. component -> bundled OpenSSL
+          install_name_tool -change "$ssl"    @loader_path/libssl.3.dylib    omp-mysql.dylib
+          install_name_tool -change "$crypto" @loader_path/libcrypto.3.dylib omp-mysql.dylib
+          # 2. each bundled lib's own id
+          install_name_tool -id @loader_path/libssl.3.dylib    libssl.3.dylib
+          install_name_tool -id @loader_path/libcrypto.3.dylib libcrypto.3.dylib
+          # 3. libssl's internal libcrypto ref (a Cellar path, distinct from above)
+          ssl_crypto=$(otool -L libssl.3.dylib | awk '/libcrypto/{print $1}')
+          install_name_tool -change "$ssl_crypto" @loader_path/libcrypto.3.dylib libssl.3.dylib
+
+          # Re-sign ad-hoc (load-command edits invalidate the signature)
+          for f in libcrypto.3.dylib libssl.3.dylib omp-mysql.dylib; do
+            codesign --remove-signature "$f" 2>/dev/null || true
+            codesign -s - -f "$f"
+          done
+
+          # Fail the build if any Homebrew path survived in any of the three
+          if otool -L omp-mysql.dylib libssl.3.dylib libcrypto.3.dylib | grep -q /opt/homebrew; then
+            echo "ERROR: a Homebrew path remains; bundle is not self-contained"; exit 1
+          fi
+          otool -L omp-mysql.dylib
+      - name: Verify the bundle loads with no Homebrew present
+        # dlopen in a sanitized env (no DYLD_*, minimal PATH) proves @loader_path
+        # resolves and the open.mp entry point is exported — i.e. it would load
+        # on a clean Mac without Homebrew OpenSSL.
+        run: |
+          set -euo pipefail
+          cat > /tmp/loadtest.c <<'EOF'
+          #include <dlfcn.h>
+          #include <stdio.h>
+          int main(int argc, char** argv){
+              void* h = dlopen(argv[1], RTLD_NOW|RTLD_LOCAL);
+              if(!h){ printf("DLOPEN FAILED: %s\n", dlerror()); return 1; }
+              return dlsym(h, "ComponentEntryPoint") ? 0 : 2;
+          }
+          EOF
+          clang -arch arm64 /tmp/loadtest.c -o /tmp/loadtest
+          env -i PATH=/usr/bin:/bin /tmp/loadtest "$PWD/omp-mysql.dylib"
+          echo "macOS bundle loads cleanly and exports ComponentEntryPoint"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mysql-macos-arm64
+          path: |
+            omp-mysql.dylib
+            libssl.3.dylib
+            libcrypto.3.dylib
+            include/omp-mysql.inc
 
   # =========================================================================
   #  Release: attach all built artifacts on a tag
   # =========================================================================
-  # Depends only on the 32-bit shipping jobs (today's real targets); the 64-bit
-  # artifacts are included if their jobs succeeded.
+  # Hard-gated on the canonical 32-bit Win/Linux targets plus macOS arm64 — a
+  # release won't publish unless all three built. The 64-bit artifacts are still
+  # included opportunistically if their jobs succeeded.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows-32, linux-32]
+    needs: [windows-32, linux-32, macos-arm64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -187,10 +260,7 @@ jobs:
             (cd "$d" && zip -r "../${name}.zip" .)
           done
           ls -la
-      # Attach build artifacts to the tag's release. Won't fail the run if the
-      # release was already created manually for this tag — it just updates assets.
       - uses: softprops/action-gh-release@v2
-        continue-on-error: true
         with:
           files: dist/*.zip
           generate_release_notes: true
