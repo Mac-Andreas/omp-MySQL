@@ -56,6 +56,34 @@ void ConnectionWorker::enqueue(std::unique_ptr<QueryJob> job)
 	inputCv_.notify_one();
 }
 
+std::unique_ptr<QueryJob> ConnectionWorker::runSync(std::unique_ptr<QueryJob> job)
+{
+	// stop() is only ever called from the main thread, which is also the only
+	// caller of runSync — so this check cannot race with a shutdown in flight.
+	// Without it a job enqueued after the thread exited would never be drained
+	// and the wait below would block the server forever.
+	if (!running_.load() || !thread_.joinable())
+	{
+		return nullptr;
+	}
+
+	auto signal = std::make_shared<std::promise<std::unique_ptr<QueryJob>>>();
+	auto finished = signal->get_future();
+	job->syncSignal = signal;
+	enqueue(std::move(job));
+
+	try
+	{
+		return finished.get();
+	}
+	catch (const std::future_error&)
+	{
+		// Broken promise: the worker shut down and discarded the job without
+		// running it. Report it as a failed query rather than hanging.
+		return nullptr;
+	}
+}
+
 void ConnectionWorker::loop()
 {
 	while (true)
@@ -130,6 +158,15 @@ void ConnectionWorker::loop()
 			}
 		}
 
+		if (job->syncSignal)
+		{
+			// A synchronous native is blocked waiting on this job. Hand it back
+			// directly — the completed sink is drained on the main tick, which
+			// cannot run while the main thread is parked inside that native.
+			auto signal = job->syncSignal; // keep the promise alive past the move
+			signal->set_value(std::move(job));
+		}
+		else
 		{
 			std::lock_guard<std::mutex> lk(*completedMutex_);
 			completed_->push_back(std::move(job));

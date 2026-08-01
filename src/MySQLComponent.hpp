@@ -187,6 +187,23 @@ public:
 	/// OnQueryExecute audit hook is NOT fired.
 	bool enqueueJob(std::unique_ptr<QueryJob> job, GuardReject* reason = nullptr);
 
+	/// Run a job on its connection's worker and BLOCK until it finishes, returning
+	/// the completed job (null if the handle is unknown, a guard rejected it, or
+	/// the worker was shutting down). Same guards as enqueueJob.
+	///
+	/// The query executes on the worker that owns the MYSQL*, never on the caller's
+	/// thread — that invariant is what keeps the sync natives race-free next to the
+	/// async queue. Backs mysql_execute_sync / mysql_execute_file_sync.
+	std::unique_ptr<QueryJob> runJobSync(std::unique_ptr<QueryJob> job,
+		GuardReject* reason = nullptr);
+
+private:
+	// Shared guard checks for enqueueJob / runJobSync: length cap, multi-statement
+	// policy, pending-queue backpressure and the rate limit. Returns false (and
+	// sets *reason) if the job must be refused. `worker` is the job's worker.
+	bool checkGuards(const QueryJob& job, ConnectionWorker* worker, GuardReject* reason);
+
+public:
 	/// Inspect / configure the guards for a connection (no-op if unknown handle).
 	QueryGuards* guardsFor(int handle);
 

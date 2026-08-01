@@ -448,6 +448,100 @@ static void ReportGuardReject(AMX* amx, int handle, const std::string& sql,
 	amx_Release(amx, amxQuery);
 }
 
+// Same idea as ReportGuardReject, for the synchronous natives — they are
+// SCRIPT_API functions with no AMX* of their own, so route the rejection through
+// dispatchJob (which resolves the script owning OnQueryError itself) using a
+// synthetic failed job.
+static void ReportSyncReject(int handle, const std::string& sql,
+	MySQLComponent::GuardReject reason)
+{
+	if (reason == MySQLComponent::GuardReject::UnknownHandle)
+	{
+		return;
+	}
+	QueryJob rejected;
+	rejected.connectionHandle = handle;
+	rejected.sql = sql;
+	rejected.succeeded = false;
+	rejected.error = GuardRejectText(reason);
+	mysqlc()->dispatchJob(rejected);
+}
+
+// Shared body of mysql_execute_sync / mysql_execute_file_sync.
+//
+// The query runs on the connection's own worker thread — the only thread allowed
+// to touch that MYSQL* — while the main thread blocks on it. Doing it that way
+// (rather than calling Connection::query() here) is what keeps the sync natives
+// race-free alongside any async queries already in flight, and it keeps a sync
+// query correctly ordered behind the ones the script fired before it.
+//
+// Returns the saved ResultSet: handle, or MYSQL_INVALID_CACHE (0).
+static cell RunSyncQuery(int handle, const std::string& sql, bool useCache)
+{
+	auto job = std::make_unique<QueryJob>();
+	job->connectionHandle = handle;
+	job->sql = sql;
+	job->useCache = useCache;
+
+	MySQLComponent::GuardReject reason = MySQLComponent::GuardReject::None;
+	std::unique_ptr<QueryJob> done = mysqlc()->runJobSync(std::move(job), &reason);
+	if (!done)
+	{
+		// Refused by a guard, or the worker was shutting down.
+		ReportSyncReject(handle, sql, reason);
+		return 0;
+	}
+
+	// Fires the OnQueryExecute audit hook on success, OnQueryError on failure —
+	// the same contract the async path gets. The job carries no callback, so
+	// dispatchJob stops there and leaves the rows to us.
+	mysqlc()->dispatchJob(*done);
+
+	if (!done->succeeded || !done->result)
+	{
+		return 0;
+	}
+
+	// Make the rows readable by the mysql_rs_* natives immediately after the call.
+	mysqlc()->setActiveCache(std::shared_ptr<QueryResult>(done->result.release()), 0);
+
+	// use_cache mirrors the async contract: with it the result is retained and its
+	// handle returned (the script must mysql_rs_release() it); without it nothing
+	// is retained — the rows stay readable only until the next query replaces the
+	// active cache — so there is no handle to give back.
+	return useCache ? static_cast<cell>(mysqlc()->saveActiveCache()) : 0;
+}
+
+// Read a .sql file into `out`. Backs mysql_execute_file / mysql_execute_file_sync.
+// `who` names the calling native for the log line.
+static bool ReadSqlFile(const char* who, const std::string& path, std::string& out)
+{
+	std::ifstream in(path, std::ios::binary);
+	if (!in.is_open())
+	{
+		std::string err = std::string(who) + ": cannot open " + path;
+		mysqlc()->log(LogLevel::Error, StringView(err));
+		return false;
+	}
+	out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+
+	// Editors add a UTF-8 BOM silently and MySQL will not parse it as SQL.
+	if (out.size() >= 3 && static_cast<unsigned char>(out[0]) == 0xEF
+		&& static_cast<unsigned char>(out[1]) == 0xBB
+		&& static_cast<unsigned char>(out[2]) == 0xBF)
+	{
+		out.erase(0, 3);
+	}
+
+	if (out.find_first_not_of(" \t\r\n") == std::string::npos)
+	{
+		std::string err = std::string(who) + ": " + path + " contains no SQL";
+		mysqlc()->log(LogLevel::Error, StringView(err));
+		return false;
+	}
+	return true;
+}
+
 // mysql_execute(MySQL:handle, query[], callback[]="", format[]="", {Float,_}:...)
 // AMX convention: params[0]=arg byte-count, params[1]=FIRST arg.
 // params: [0]=count [1]=handle [2]=query [3]=callback [4]=format [5+]=values
@@ -528,6 +622,53 @@ static cell AMX_NATIVE_CALL n_mysql_execute_for(AMX* amx, const cell* params)
 		return 1;
 	}
 	ReportGuardReject(amx, handle, sql, cb, reason);
+	return 0;
+}
+
+// mysql_execute_file(MySQL:handle, file_path[], callback[]="", format[]="", {Float,_}:...)
+// Async; identical to mysql_execute except the SQL is read from a file. The file
+// is sent to the server verbatim, so a script running one with several statements
+// in it needs CLIENT_MULTI_STATEMENTS on that connection (mysql_config_set with
+// MULTI_STATEMENTS) — otherwise the same injection guard the async path uses
+// rejects it.
+// params: [0]=count [1]=handle [2]=file_path [3]=callback [4]=format [5+]=values
+static cell AMX_NATIVE_CALL n_mysql_execute_file(AMX* amx, const cell* params)
+{
+	int paramCount = static_cast<int>(params[0] / static_cast<cell>(sizeof(cell)));
+	if (paramCount < 2)
+	{
+		return 0;
+	}
+
+	const std::string path = AmxStringParam(amx, params[2]);
+	std::string sql;
+	if (!ReadSqlFile("mysql_execute_file", path, sql))
+	{
+		return 0;
+	}
+
+	auto job = std::make_unique<QueryJob>();
+	job->connectionHandle = static_cast<int>(params[1]);
+	job->sql = std::move(sql);
+	if (paramCount >= 3)
+	{
+		job->callback = AmxStringParam(amx, params[3]);
+	}
+	if (paramCount >= 4)
+	{
+		std::string fmt = AmxStringParam(amx, params[4]);
+		DecodeFormat(amx, params, 5, fmt, job->args);
+	}
+
+	std::string reported = job->sql;
+	std::string cb = job->callback;
+	int handle = job->connectionHandle;
+	MySQLComponent::GuardReject reason = MySQLComponent::GuardReject::None;
+	if (mysqlc()->enqueueJob(std::move(job), &reason))
+	{
+		return 1;
+	}
+	ReportGuardReject(amx, handle, reported, cb, reason);
 	return 0;
 }
 
@@ -901,6 +1042,7 @@ static const AMX_NATIVE_INFO kClassicNatives[] = {
 	{ "mysql_config_set", n_mysql_config_set },
 	{ "mysql_execute", n_mysql_execute },
 	{ "mysql_execute_for", n_mysql_execute_for },
+	{ "mysql_execute_file", n_mysql_execute_file },
 	{ "mysql_format", n_mysql_format },
 	{ "mysql_stmt_execute", n_mysql_stmt_execute },
 	{ "mysql_vector_to_string", n_mysql_vector_to_string },
@@ -1180,38 +1322,34 @@ SCRIPT_API(mysql_is_tls_enabled, bool(int handle))
 //  mini-language) defined above and registered in kClassicNatives.
 // ===========================================================================
 
-// mysql_execute_sync(MySQL:handle, query[], bool:use_cache) -> ResultSet:
-// Synchronous; runs the query but does not yet expose results (returns 1/0).
-// The ResultSet: return type is honoured once the cache API lands in Phase 4.
+// ResultSet:mysql_execute_sync(MySQL:handle, query[], bool:use_cache = true)
+//
+// Synchronous query: blocks the server until the rows are back, then makes them
+// the active result set so the mysql_rs_* natives can read them straight away.
+//
+// With use_cache (the default) the result is also retained and its ResultSet:
+// handle returned — release it with mysql_rs_release() when you are done, or you
+// leak it. With use_cache = false nothing is retained and the return is
+// MYSQL_INVALID_CACHE even on success; check OnQueryError / the server log for
+// failures in that case.
 SCRIPT_API(mysql_execute_sync, int(int handle, std::string const& query, bool use_cache))
 {
-	(void)use_cache;
-	Connection* c = mysqlc()->getConnection(handle);
-	if (!c)
+	return static_cast<int>(RunSyncQuery(handle, query, use_cache));
+}
+
+// ResultSet:mysql_execute_file_sync(MySQL:handle, file_path[], bool:use_cache = false)
+// Synchronous variant of mysql_execute_file — same file handling, same blocking
+// and result-cache semantics as mysql_execute_sync above. use_cache defaults to
+// false here because the usual caller is a schema/migration file whose rows
+// nobody reads.
+SCRIPT_API(mysql_execute_file_sync, int(int handle, std::string const& file_path, bool use_cache))
+{
+	std::string sql;
+	if (!ReadSqlFile("mysql_execute_file_sync", file_path, sql))
 	{
 		return 0;
 	}
-	// Same multi-statement-off defense the async path enforces in enqueueJob:
-	// reject stacked statements on a connection that didn't opt in. The sync
-	// path can't reach enqueueJob, so guard it here directly.
-	if (!mysqlc()->multiStatementsAllowed(handle)
-		&& MySQLComponent::isMultiStatement(query))
-	{
-		mysqlc()->log(LogLevel::Warning,
-			"mysql_execute_sync rejected: multiple statements on a connection that did "
-			"not enable CLIENT_MULTI_STATEMENTS (possible SQL injection)");
-		return 0;
-	}
-	auto start = std::chrono::steady_clock::now();
-	bool ok = c->query(query);
-	auto end = std::chrono::steady_clock::now();
-	if (ok)
-	{
-		// Audit hook, same contract as the async path (real measured time).
-		auto micros = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-		mysqlc()->fireQueryExecuteHook(handle, query, static_cast<long long>(micros));
-	}
-	return ok ? 1 : 0;
+	return static_cast<int>(RunSyncQuery(handle, sql, use_cache));
 }
 
 // mysql_pending_count(MySQL:handle) -> queued/in-flight async query count

@@ -14,6 +14,7 @@
 
 #include "Result.hpp"
 
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
@@ -95,6 +96,16 @@ struct QueryJob
 	// (find) or the insert-id into the key (insert) BEFORE firing the callback.
 	int modelHandle = 0;
 	int modelOp = 0; // ModelOp, but kept int to avoid the include here
+
+	// --- synchronous execution (mysql_execute_sync / mysql_execute_file_sync) --
+	// Set by ConnectionWorker::runSync. When present the worker hands the finished
+	// job straight back to the blocked caller through this promise instead of
+	// pushing it to the completed sink — the main thread is stuck inside the
+	// native and cannot drain that sink until we return. Held by shared_ptr so a
+	// job dropped without ever running (worker shutdown clears its input queue)
+	// destroys the promise and unblocks the caller with a broken-promise error
+	// rather than hanging the server forever.
+	std::shared_ptr<std::promise<std::unique_ptr<QueryJob>>> syncSignal;
 
 	// --- filled in by the worker ---
 	bool succeeded = false;

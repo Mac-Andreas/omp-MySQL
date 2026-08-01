@@ -212,7 +212,8 @@ void MySQLComponent::clearConnections()
 
 // --- Async query engine ----------------------------------------------------
 
-bool MySQLComponent::enqueueJob(std::unique_ptr<QueryJob> job, GuardReject* reason)
+bool MySQLComponent::checkGuards(const QueryJob& job, ConnectionWorker* worker,
+	GuardReject* reason)
 {
 	auto setReason = [&](GuardReject r) {
 		if (reason != nullptr)
@@ -221,23 +222,16 @@ bool MySQLComponent::enqueueJob(std::unique_ptr<QueryJob> job, GuardReject* reas
 		}
 	};
 
-	const int handle = job->connectionHandle;
-	auto it = workers_.find(handle);
-	if (it == workers_.end())
-	{
-		setReason(GuardReject::UnknownHandle);
-		return false;
-	}
-
+	const int handle = job.connectionHandle;
 	const QueryGuards& g = guards_[handle]; // default-constructed if absent
 
 	// (1) Length cap. Statement-execute jobs carry no SQL here (it lives in the
 	// PreparedStatement), so only check plain query jobs.
-	if (job->statement == nullptr && g.maxQueryLength != 0
-		&& job->sql.size() > g.maxQueryLength)
+	if (job.statement == nullptr && g.maxQueryLength != 0
+		&& job.sql.size() > g.maxQueryLength)
 	{
 		setReason(GuardReject::TooLong);
-		std::string msg = "query rejected: length " + std::to_string(job->sql.size())
+		std::string msg = "query rejected: length " + std::to_string(job.sql.size())
 			+ " exceeds limit " + std::to_string(g.maxQueryLength);
 		log(LogLevel::Warning, StringView(msg));
 		return false;
@@ -245,11 +239,11 @@ bool MySQLComponent::enqueueJob(std::unique_ptr<QueryJob> job, GuardReject* reas
 
 	// (2) Multi-statement-off enforcement. A prepared statement is single by
 	// construction; only guard plain query strings.
-	if (job->statement == nullptr)
+	if (job.statement == nullptr)
 	{
 		auto allowed = multiStatementAllowed_.find(handle);
 		bool multiOk = allowed != multiStatementAllowed_.end() && allowed->second;
-		if (!multiOk && isMultiStatement(job->sql))
+		if (!multiOk && isMultiStatement(job.sql))
 		{
 			setReason(GuardReject::MultiStatement);
 			log(LogLevel::Warning,
@@ -260,7 +254,7 @@ bool MySQLComponent::enqueueJob(std::unique_ptr<QueryJob> job, GuardReject* reas
 	}
 
 	// (3) Pending-queue backpressure.
-	if (g.maxPendingQueries != 0 && it->second->pending() >= g.maxPendingQueries)
+	if (g.maxPendingQueries != 0 && worker->pending() >= g.maxPendingQueries)
 	{
 		setReason(GuardReject::TooManyPending);
 		log(LogLevel::Warning, "query rejected: too many pending queries");
@@ -287,8 +281,47 @@ bool MySQLComponent::enqueueJob(std::unique_ptr<QueryJob> job, GuardReject* reas
 	}
 
 	setReason(GuardReject::None);
+	return true;
+}
+
+bool MySQLComponent::enqueueJob(std::unique_ptr<QueryJob> job, GuardReject* reason)
+{
+	auto it = workers_.find(job->connectionHandle);
+	if (it == workers_.end())
+	{
+		if (reason != nullptr)
+		{
+			*reason = GuardReject::UnknownHandle;
+		}
+		return false;
+	}
+	if (!checkGuards(*job, it->second.get(), reason))
+	{
+		return false;
+	}
 	it->second->enqueue(std::move(job));
 	return true;
+}
+
+std::unique_ptr<QueryJob> MySQLComponent::runJobSync(std::unique_ptr<QueryJob> job,
+	GuardReject* reason)
+{
+	auto it = workers_.find(job->connectionHandle);
+	if (it == workers_.end())
+	{
+		if (reason != nullptr)
+		{
+			*reason = GuardReject::UnknownHandle;
+		}
+		return nullptr;
+	}
+	if (!checkGuards(*job, it->second.get(), reason))
+	{
+		return nullptr;
+	}
+	// Blocks the main thread until the worker has run it. That is the whole point
+	// of a sync native, and it is why the docs tell scripts to use it sparingly.
+	return it->second->runSync(std::move(job));
 }
 
 QueryGuards* MySQLComponent::guardsFor(int handle)

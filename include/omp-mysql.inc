@@ -413,15 +413,34 @@ native mysql_execute(MySQL:handle, const query[], const callback[] = "", const f
 /// is cancelled automatically if that player disconnects first.
 native mysql_execute_for(MySQL:handle, const query[], const callback[] = "", const format[] = "", {Float,_}:...);
 
-/// Synchronous query. Blocks until done; returns a saved ResultSet: handle (or
-/// MYSQL_INVALID_CACHE). You must mysql_rs_release() the result when finished.
+/**
+ * Synchronous query. Blocks the whole server until the rows are back, then makes
+ * them the active result set (readable immediately with the mysql_rs_* natives).
+ *
+ * With use_cache (the default) the result is ALSO retained and its ResultSet:
+ * handle returned — call mysql_rs_release() on it when finished or you leak it.
+ * With use_cache = false nothing is retained and the return is MYSQL_INVALID_CACHE
+ * even on success, so use OnQueryError to detect failures:
+ *
+ *     new ResultSet:rs = mysql_execute_sync(db, "SELECT id, name FROM users");
+ *     if (rs != MYSQL_INVALID_CACHE)
+ *     {
+ *         new rows; mysql_rs_row_count(rows);
+ *         mysql_rs_release(rs);
+ *     }
+ *
+ *     mysql_execute_sync(db, "CREATE TABLE ...", false);   // DDL, no rows wanted
+ */
 native ResultSet:mysql_execute_sync(MySQL:handle, const query[], bool:use_cache = true);
 
-/// Async query whose text is read from a .sql file (supports multiple
-/// statements when MULTI_STATEMENTS is enabled on the connection).
+/// Async query whose text is read from a .sql file. The file is sent verbatim,
+/// so a file holding more than one statement needs MULTI_STATEMENTS enabled on
+/// the connection (mysql_config_set(cfg, MULTI_STATEMENTS, true)) — otherwise the
+/// same injection guard the async path uses rejects it.
 native mysql_execute_file(MySQL:handle, const file_path[], const callback[] = "", const format[] = "", {Float,_}:...);
 
-/// Synchronous variant of mysql_execute_file.
+/// Synchronous variant of mysql_execute_file — same file handling, same blocking
+/// and ResultSet: semantics as mysql_execute_sync.
 native ResultSet:mysql_execute_file_sync(MySQL:handle, const file_path[], bool:use_cache = false);
 
 

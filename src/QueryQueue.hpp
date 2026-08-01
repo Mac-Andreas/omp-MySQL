@@ -43,6 +43,15 @@ public:
 	ConnectionWorker& operator=(const ConnectionWorker&) = delete;
 
 	void enqueue(std::unique_ptr<QueryJob> job);
+
+	/// Run `job` on this worker and BLOCK the calling thread until it finishes,
+	/// returning the completed job (null if the worker is stopped or dropped it).
+	/// This is how the synchronous natives keep the one-thread-per-MYSQL* rule:
+	/// the query still runs on the owning worker, the caller just waits for it.
+	/// Jobs already queued ahead of it run first, so a sync query never jumps the
+	/// async queue.
+	std::unique_ptr<QueryJob> runSync(std::unique_ptr<QueryJob> job);
+
 	void stop();
 
 	int pending() const { return pending_.load(); }

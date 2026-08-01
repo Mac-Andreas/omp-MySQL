@@ -276,12 +276,12 @@ x FLOAT NOT NULL DEFAULT 0, y FLOAT NOT NULL DEFAULT 0, z FLOAT NOT NULL DEFAULT
 a FLOAT NOT NULL DEFAULT 0, health FLOAT NOT NULL DEFAULT 100, armour FLOAT NOT NULL DEFAULT 0,\
 ip VARCHAR(45) NOT NULL DEFAULT '', logins INT NOT NULL DEFAULT 0, playtime INT NOT NULL DEFAULT 0,\
 last_login DATETIME NULL, created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP\
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci");
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci", false);
 
     mysql_execute_sync(g_db,
         "CREATE TABLE IF NOT EXISTS account_weapons (\
 account_id INT NOT NULL, slot INT NOT NULL, weapon INT NOT NULL, ammo INT NOT NULL,\
-PRIMARY KEY (account_id, slot)) CHARACTER SET utf8mb4");
+PRIMARY KEY (account_id, slot)) CHARACTER SET utf8mb4", false);
 
     // If the filterscript was RELOADED with players already online, their session
     // memory is gone (everyone is logged out) -> re-run auth so they're prompted
