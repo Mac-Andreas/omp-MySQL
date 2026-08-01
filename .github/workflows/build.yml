@@ -244,9 +244,20 @@ jobs:
   # Hard-gated on the canonical 32-bit Win/Linux targets plus macOS arm64 — a
   # release won't publish unless all three built. The 64-bit artifacts are still
   # included opportunistically if their jobs succeeded.
+  #
+  # `needs` lists the 64-bit jobs too so the release WAITS for them, but the `if`
+  # only requires the three gates to have succeeded — that keeps 64-bit
+  # non-blocking (a 64-bit failure still ships a release) without racing them.
+  # Listing only the gates meant release could start while windows-64 was still
+  # building, and download-artifact would silently publish without its zip;
+  # that is how v1.0.1 shipped missing mysql-windows-x64.zip.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows-32, linux-32, macos-arm64]
+    if: >
+      always() && startsWith(github.ref, 'refs/tags/v')
+      && needs.windows-32.result == 'success'
+      && needs.linux-32.result == 'success'
+      && needs.macos-arm64.result == 'success'
+    needs: [windows-32, linux-32, macos-arm64, windows-64, linux-64]
     runs-on: ubuntu-latest
     # The default GITHUB_TOKEN is read-only, so action-gh-release got a 403
     # ("Resource not accessible by integration") when creating the release.
