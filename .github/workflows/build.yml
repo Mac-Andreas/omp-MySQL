@@ -69,7 +69,9 @@ jobs:
   # i386 Debian bullseye container (glibc 2.31, matching the server); MariaDB
   # Connector/C built from source (OpenSSL TLS), statically linked.
   linux-32:
-    runs-on: ubuntu-latest
+    # Pinned: on ubuntu-latest (now 26.04) the build container can't resolve
+    # deb.debian.org, so apt finds no packages.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -131,7 +133,9 @@ jobs:
 
   # --- Linux 64-bit .so -----------------------------------------------------
   linux-64:
-    runs-on: ubuntu-latest
+    # Pinned: on ubuntu-latest (now 26.04) the build container can't resolve
+    # deb.debian.org, so apt finds no packages.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
