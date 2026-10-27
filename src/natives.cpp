@@ -1240,18 +1240,16 @@ SCRIPT_API(mysql_error, bool(OutputOnlyString& destination, int handle))
 // load banner, the server-log update notice, and these natives share one source.
 
 // mysql_version(destination[], maxlength) — this build's version (e.g. "0.1.0").
-SCRIPT_API(mysql_version, bool(OutputOnlyString& destination, int maxlength))
+SCRIPT_API(mysql_version, bool(OutputOnlyString& destination))
 {
-	(void)maxlength;
 	destination = std::string(MySQLComponent::kVersion);
 	return true;
 }
 
 // mysql_latest_version(destination[], maxlength) — the latest published version
 // this build is aware of. Compare with mysql_version() to detect updates.
-SCRIPT_API(mysql_latest_version, bool(OutputOnlyString& destination, int maxlength))
+SCRIPT_API(mysql_latest_version, bool(OutputOnlyString& destination))
 {
-	(void)maxlength;
 	destination = std::string(MySQLComponent::kLatestVersion);
 	return true;
 }
@@ -1392,9 +1390,8 @@ SCRIPT_API(mysql_set_limit, bool(int handle, int type, int value))
 // ===========================================================================
 
 // mysql_escape(source[], destination[], maxlength, MySQL:handle)
-SCRIPT_API(mysql_escape, int(std::string const& source, OutputOnlyString& destination, int maxlength, int handle))
+SCRIPT_API(mysql_escape, int(std::string const& source, OutputOnlyString& destination, int handle))
 {
-	(void)maxlength;
 	Connection* c = mysqlc()->getConnection(handle);
 	std::string escaped = c ? c->escape(source) : source;
 	destination = escaped;
@@ -1409,18 +1406,16 @@ SCRIPT_API(mysql_set_charset, bool(std::string const& charset, int handle))
 }
 
 // mysql_get_charset(destination[], maxlength, MySQL:handle)
-SCRIPT_API(mysql_get_charset, bool(OutputOnlyString& destination, int maxlength, int handle))
+SCRIPT_API(mysql_get_charset, bool(OutputOnlyString& destination, int handle))
 {
-	(void)maxlength;
 	Connection* c = mysqlc()->getConnection(handle);
 	destination = c ? c->getCharset() : std::string();
 	return c != nullptr;
 }
 
 // mysql_server_status(destination[], maxlength, MySQL:handle)
-SCRIPT_API(mysql_server_status, bool(OutputOnlyString& destination, int maxlength, int handle))
+SCRIPT_API(mysql_server_status, bool(OutputOnlyString& destination, int handle))
 {
-	(void)maxlength;
 	Connection* c = mysqlc()->getConnection(handle);
 	destination = c ? c->stat() : std::string();
 	return c != nullptr;
@@ -1989,9 +1984,8 @@ static cell AMX_NATIVE_CALL n_mysql_model_save(AMX* amx, const cell* params)
 }
 
 // mysql_hash_sync(password[], destination[], maxlength, algo)
-SCRIPT_API(mysql_hash_sync, int(std::string const& password, OutputOnlyString& destination, int maxlength, int algo))
+SCRIPT_API(mysql_hash_sync, int(std::string const& password, OutputOnlyString& destination, int algo))
 {
-	(void)maxlength;
 	(void)algo; // Argon2id only for now
 	std::string h = Hashing::hashArgon2id(password);
 	destination = h;
