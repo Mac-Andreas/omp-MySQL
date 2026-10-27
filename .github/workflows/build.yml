@@ -149,6 +149,29 @@ jobs:
             build-linux64/omp-mysql.so
             include/omp-mysql.inc
 
+  # --- Linux arm64 .so (Raspberry Pi) ---------------------------------------
+  # For the 64-bit ARM open.mp server (Pi-Andreas/omp-server-raspberrypi). Built
+  # natively on GitHub's arm64 runner, in Debian bookworm so it links OpenSSL 3
+  # like Raspberry Pi OS. Non-gating, like the other 64-bit jobs.
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build arm64 omp-mysql.so
+        run: ARCH=arm64 ./scripts/build-linux.sh
+      - name: Sanity-check artifact
+        run: |
+          test -f build-linux-arm64/omp-mysql.so
+          file build-linux-arm64/omp-mysql.so | grep -q "ARM aarch64"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mysql-linux-arm64
+          path: |
+            build-linux-arm64/omp-mysql.so
+            include/omp-mysql.inc
+
   # --- macOS .dylib (arm64) -------------------------------------------------
   # A native macOS open.mp server now exists (Mac-Andreas/omp-server-macos), so
   # the .dylib is a real shipping target. That server is Apple Silicon (arm64)
@@ -257,7 +280,7 @@ jobs:
       && needs.windows-32.result == 'success'
       && needs.linux-32.result == 'success'
       && needs.macos-arm64.result == 'success'
-    needs: [windows-32, linux-32, macos-arm64, windows-64, linux-64]
+    needs: [windows-32, linux-32, macos-arm64, windows-64, linux-64, linux-arm64]
     runs-on: ubuntu-latest
     # The default GITHUB_TOKEN is read-only, so action-gh-release got a 403
     # ("Resource not accessible by integration") when creating the release.

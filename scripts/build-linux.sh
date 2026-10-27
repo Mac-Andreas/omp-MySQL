@@ -6,13 +6,16 @@
 #                        open.mp server's arch (its server + components are i386).
 #   ARCH=64           -> x86_64 (linux/amd64), build-linux64/ — future-proofing
 #                        for a 64-bit open.mp server.
+#   ARCH=arm64        -> aarch64 (linux/arm64), build-linux-arm64/, glibc 2.36 —
+#                        the Raspberry Pi server (Pi-Andreas/omp-server-raspberrypi).
 #
 # The MariaDB Connector/C submodule is built from source inside the container
 # (OpenSSL TLS) and statically linked, so the .so is self-contained. Requires a
 # working Docker (e.g. `colima start`).
 #
-# Usage:  scripts/build-linux.sh            # 32-bit
-#         ARCH=64 scripts/build-linux.sh    # 64-bit
+# Usage:  scripts/build-linux.sh               # 32-bit
+#         ARCH=64 scripts/build-linux.sh       # 64-bit
+#         ARCH=arm64 scripts/build-linux.sh    # Raspberry Pi (64-bit ARM)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,6 +32,14 @@ if [ "$ARCH" = "64" ]; then
 	PLATFORM="linux/amd64"
 	BUILD_DIR="build-linux64"
 	TOOLCHAIN=""   # native 64-bit; no -m32 toolchain
+elif [ "$ARCH" = "arm64" ]; then
+	# Bookworm, not bullseye: Raspberry Pi OS bookworm and later only ship
+	# OpenSSL 3 (bullseye would link libssl.so.1.1), and the Pi server's own
+	# baseline is glibc 2.36. Builds natively on an arm64 host (Apple Silicon).
+	IMAGE="debian:bookworm"
+	PLATFORM="linux/arm64"
+	BUILD_DIR="build-linux-arm64"
+	TOOLCHAIN=""
 else
 	PLATFORM="linux/386"
 	BUILD_DIR="build-linux"
@@ -47,7 +58,12 @@ docker run --rm --platform "$PLATFORM" \
 		apt-get install -y -qq --no-install-recommends \
 			build-essential ninja-build python3-pip \
 			libssl-dev zlib1g-dev libzstd-dev ca-certificates >/dev/null
-		pip3 install --quiet "cmake>=3.19,<4"
+		# Bookworm ships CMake 3.25 (and its pip refuses system installs).
+		if [ "$(. /etc/os-release; echo "$VERSION_CODENAME")" = bookworm ]; then
+			apt-get install -y -qq --no-install-recommends cmake >/dev/null
+		else
+			pip3 install --quiet "cmake>=3.19,<4"
+		fi
 		export PATH="/usr/local/bin:$PATH"
 		cmake --version | head -1
 

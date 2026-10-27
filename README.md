@@ -9,7 +9,7 @@ Tested live on MySQL 5.7 → 9.2.
 
 [![release](https://img.shields.io/github/v/release/Mac-Andreas/omp-MySQL?label=release)](https://github.com/Mac-Andreas/omp-MySQL/releases/latest)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-informational)](#install)
+[![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Raspberry%20Pi%20%7C%20macOS-informational)](#install)
 [![MySQL](https://img.shields.io/badge/MySQL-5.7%20%E2%86%92%209.x-orange)](#mysql-server-support)
 [![wiki](https://img.shields.io/badge/docs-wiki-success)](https://github.com/Mac-Andreas/omp-MySQL/wiki)
 
@@ -56,7 +56,7 @@ industry-standard (JDBC / DB-API style) API.
 
 - **Author:** Xyranaut · **Org:** Mac Andreas
 - **License:** [MIT](LICENSE) — use it anywhere, including closed-source gamemodes.
-- **Ships:** Windows `.dll` + Linux `.so` (32-bit, the open.mp server arch) + macOS `.dylib` (arm64).
+- **Ships:** Windows `.dll` + Linux `.so` (32-bit, the open.mp server arch) + Raspberry Pi `.so` (arm64) + macOS `.dylib` (arm64).
 
 ### Highlights
 
@@ -124,6 +124,9 @@ old→new mapping for migrating an existing gamemode is in the
 1. Download the [latest release](https://github.com/Mac-Andreas/omp-MySQL/releases/latest):
    - **Windows:** `omp-mysql.dll` + `libssl-3.dll` + `libcrypto-3.dll` → `components/`
    - **Linux:** `omp-mysql.so` → `components/`
+   - **Raspberry Pi:** `omp-mysql.so` from `mysql-linux-arm64.zip` → `components/` of the
+     [Raspberry Pi open.mp server](https://github.com/Pi-Andreas/omp-server-raspberrypi)
+     (64-bit Raspberry Pi OS; uses the Pi's own OpenSSL 3)
 2. `omp-mysql.inc` → `qawno/include/`, then `#include <omp-mysql>`.
 3. Connect (see [TL;DR](#tldr)). A complete **login/register admin demo** that exercises
    every native ships as `filterscripts/mysql-admin.pwn` — see the
@@ -146,9 +149,10 @@ linked — builds need **no external MySQL client install**.
 |---|---|---|
 | **Windows `.dll`** | native MSVC: `cmake -B build -A Win32 && cmake --build build --config Release` (OpenSSL via vcpkg) | must be **MSVC ABI** — mingw loads but crashes omp-server |
 | **Linux `.so`** | `ARCH=32 ./scripts/build-linux.sh` | i386 Debian **bullseye** (glibc 2.31) container; needs Docker |
+| **Raspberry Pi `.so`** | `ARCH=arm64 ./scripts/build-linux.sh` | aarch64 Debian **bookworm** (glibc 2.36, OpenSSL 3) container — for the 64-bit ARM open.mp server ([Pi-Andreas/omp-server-raspberrypi](https://github.com/Pi-Andreas/omp-server-raspberrypi)); needs Docker (native on Apple Silicon / arm64) |
 | **macOS `.dylib`** | `cmake -B build -DCMAKE_OSX_ARCHITECTURES=arm64 && cmake --build build` | **Apple Silicon** — for the native macOS open.mp server ([Mac-Andreas/omp-server-macos](https://github.com/Mac-Andreas/omp-server-macos)). macOS has no 32-bit support. |
 
-CI (`.github/workflows/build.yml`) builds and attaches the Windows + Linux + macOS (arm64)
+CI (`.github/workflows/build.yml`) builds and attaches the Windows + Linux + Raspberry Pi (arm64) + macOS (arm64)
 artifacts on tagged releases. Step-by-step per-OS instructions (including the Windows OpenSSL/vcpkg
 setup and the macOS build) are in the
 **[Building guide](https://github.com/Mac-Andreas/omp-MySQL/wiki/Building)**.
