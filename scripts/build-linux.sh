@@ -53,6 +53,11 @@ docker run --rm --platform "$PLATFORM" \
 	-e DEBIAN_FRONTEND=noninteractive \
 	-e BUILD_DIR="$BUILD_DIR" -e TOOLCHAIN="$TOOLCHAIN" \
 	"$IMAGE" bash -euo pipefail -c '
+		# Bullseye is past end of life: its packages (security updates
+		# included) are only on archive.debian.org now; deb.debian.org 404s.
+		if [ "$(. /etc/os-release; echo "$VERSION_CODENAME")" = bullseye ]; then
+			sed -i "s|http://deb.debian.org/|http://archive.debian.org/|" /etc/apt/sources.list
+		fi
 		apt-get update -qq
 		# Build deps + the MariaDB Connector/C submodule deps (OpenSSL, zlib).
 		apt-get install -y -qq --no-install-recommends \
