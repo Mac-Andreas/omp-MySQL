@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.19)
-project(omp-mysql LANGUAGES C CXX VERSION 1.0.2)
+project(omp-mysql LANGUAGES C CXX VERSION 1.1.0)
 
 # --- Standards -------------------------------------------------------------
 set(CMAKE_CXX_STANDARD 20)

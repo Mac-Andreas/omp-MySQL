@@ -105,8 +105,8 @@ public:
 	// bumped when a release is published, so a server running an older DLL learns
 	// (in the server log on load, and via mysql_update_available()) that an update
 	// is out. Single source of truth for the load banner + the version natives.
-	static constexpr const char* kVersion = "1.0.2";
-	static constexpr const char* kLatestVersion = "1.0.2";
+	static constexpr const char* kVersion = "1.1.0";
+	static constexpr const char* kLatestVersion = "1.1.0";
 	static bool updateAvailable()
 	{
 		return std::string(kVersion) != std::string(kLatestVersion);
@@ -296,7 +296,7 @@ public:
 
 	// --- IComponent ---
 	StringView componentName() const override { return "MySQL"; }
-	SemanticVersion componentVersion() const override { return SemanticVersion(1, 0, 2, 0); }
+	SemanticVersion componentVersion() const override { return SemanticVersion(1, 1, 0, 0); }
 	void onLoad(ICore* c) override;
 	void onInit(IComponentList* components) override;
 	void onReady() override;

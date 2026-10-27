@@ -322,7 +322,7 @@ native mysql_get_charset(destination[], maxlength = sizeof(destination), MySQL:h
  *  Version / update check  (new)
  * ========================================================================== */
 
-/// This build's version string (e.g. "1.0.2").
+/// This build's version string (e.g. "1.1.0").
 native mysql_version(destination[], maxlength = sizeof(destination));
 
 /// The latest published version this build is aware of. If it differs from
